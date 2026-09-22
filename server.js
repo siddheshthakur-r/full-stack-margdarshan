@@ -5,13 +5,12 @@ import OpenAI from "openai";
 
 const app = express();
 
-const port = Number(
-  process.env.PORT || 8787
-);
+const port = Number(process.env.PORT || 8787);
 
+// Create OpenAI client only when the API key exists
 const client = process.env.OPENAI_API_KEY
   ? new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY
+      apiKey: process.env.OPENAI_API_KEY,
     })
   : null;
 
@@ -19,26 +18,20 @@ app.disable("x-powered-by");
 
 app.use(
   cors({
-    origin: true
+    origin: true,
   })
 );
 
 app.use(
   express.json({
-    limit: "64kb"
+    limit: "64kb",
   })
 );
 
-
 /*
-  SYSTEM INSTRUCTIONS
+ * SYSTEM INSTRUCTIONS
+ */
 
-  The AI receives only the information required
-  for behavioral guidance.
-
-  Personal demographic information is intentionally
-  NOT sent to the AI.
-*/
 const SYSTEM_PROMPT = `
 You are Margdarshan, a calm and supportive parenting guidance assistant.
 
@@ -72,91 +65,37 @@ When giving recommendations, prefer this structure:
 Remember that the survey is an observation tool, not a diagnostic test.
 `;
 
-
 /*
-  Keep only the survey information needed
-  for AI behavioral guidance.
+ * Keep only behavioral information needed for guidance.
+ * Parent demographic information is deliberately excluded.
+ */
 
-  Demographic information such as parent's age,
-  gender, education and occupation is deliberately
-  excluded from the AI prompt.
-*/
 function normalizeSurvey(survey = {}) {
   return {
-    childAge: String(
-      survey.q5 || ""
-    ).slice(0, 50),
-
-    anger: String(
-      survey.q6 || ""
-    ).slice(0, 100),
-
-    impatience: String(
-      survey.q7 || ""
-    ).slice(0, 100),
-
-    crying: String(
-      survey.q8 || ""
-    ).slice(0, 100),
-
-    upsetWhenThingsGoWrong: String(
-      survey.q9 || ""
-    ).slice(0, 100),
-
-    fearAnxiety: String(
-      survey.q10 || ""
-    ).slice(0, 100),
-
-    difficultyUnderstanding: String(
-      survey.q11 || ""
-    ).slice(0, 100),
-
-    parentStress: String(
-      survey.q12 || ""
-    ).slice(0, 100),
-
-    biggestChallenge: String(
-      survey.q13 || ""
-    ).slice(0, 600),
-
-    guidanceHelpful: String(
-      survey.q14 || ""
-    ).slice(0, 100),
-
-    adviceSource: String(
-      survey.q15 || ""
-    ).slice(0, 100),
-
-    doctorConsulted: String(
-      survey.q16 || ""
-    ).slice(0, 100),
-
-    onlineAdviceTrust: String(
-      survey.q17 || ""
-    ).slice(0, 100),
-
-    smartphone: String(
-      survey.q18 || ""
-    ).slice(0, 50),
-
-    internet: String(
-      survey.q19 || ""
-    ).slice(0, 50),
-
-    regularTips: String(
-      survey.q20 || ""
-    ).slice(0, 100),
-
-    recommendPlatform: String(
-      survey.q21 || ""
-    ).slice(0, 100)
+    childAge: String(survey.q5 || "").slice(0, 50),
+    anger: String(survey.q6 || "").slice(0, 100),
+    impatience: String(survey.q7 || "").slice(0, 100),
+    crying: String(survey.q8 || "").slice(0, 100),
+    upsetWhenThingsGoWrong: String(survey.q9 || "").slice(0, 100),
+    fearAnxiety: String(survey.q10 || "").slice(0, 100),
+    difficultyUnderstanding: String(survey.q11 || "").slice(0, 100),
+    parentStress: String(survey.q12 || "").slice(0, 100),
+    biggestChallenge: String(survey.q13 || "").slice(0, 600),
+    guidanceHelpful: String(survey.q14 || "").slice(0, 100),
+    adviceSource: String(survey.q15 || "").slice(0, 100),
+    doctorConsulted: String(survey.q16 || "").slice(0, 100),
+    onlineAdviceTrust: String(survey.q17 || "").slice(0, 100),
+    smartphone: String(survey.q18 || "").slice(0, 50),
+    internet: String(survey.q19 || "").slice(0, 50),
+    regularTips: String(survey.q20 || "").slice(0, 100),
+    recommendPlatform: String(survey.q21 || "").slice(0, 100),
   };
 }
 
-
 /*
-  Create a clean behavioral summary for the AI.
-*/
+ * Build behavioral context for the AI.
+ */
+
 function buildSurveyContext(survey) {
   const safe = normalizeSurvey(survey);
 
@@ -224,153 +163,146 @@ ${safe.recommendPlatform}
 `;
 }
 
-
 /*
-  POST /api/chat
-*/
-app.post(
-  "/api/chat",
-  async (req, res) => {
-    const {
-      language = "en",
-      message = "",
-      survey
-    } = req.body || {};
+ * POST /api/chat
+ */
 
-    const safeMessage = String(
-      message || ""
-    ).slice(0, 1500);
+app.post("/api/chat", async (req, res) => {
+  const {
+    language = "en",
+    message = "",
+    survey,
+  } = req.body || {};
 
-    const allowedLanguages = {
-      en: "English",
-      hi: "Hindi",
-      mr: "Marathi"
-    };
+  const safeMessage = String(message || "").slice(0, 1500);
 
-    const languageName =
-      allowedLanguages[language] ||
-      "English";
+  const allowedLanguages = {
+    en: "English",
+    hi: "Hindi",
+    mr: "Marathi",
+  };
 
-    if (
-      !safeMessage.trim() &&
-      !survey
-    ) {
-      return res.status(400).json({
-        error: "Message is required."
-      });
-    }
+  const languageName =
+    allowedLanguages[language] || "English";
 
+  if (!safeMessage.trim() && !survey) {
+    return res.status(400).json({
+      error: "Message is required.",
+    });
+  }
 
-    /*
-      General chatbot question without survey.
-    */
-    const surveyContext = survey
-      ? buildSurveyContext(survey)
-      : "No behavior survey was provided.";
+  const surveyContext = survey
+    ? buildSurveyContext(survey)
+    : "No behavior survey was provided.";
 
+  /*
+   * If OpenAI API key is missing, use local fallback.
+   */
 
-    /*
-      Local fallback if API key isn't configured.
-    */
-    if (!client) {
-      return res.json({
-        answer: fallbackGuidance(
-          language
-        ),
-        ephemeral: true,
-        provider: "local-fallback"
-      });
-    }
+  if (!client) {
+    console.error(
+      "OPENAI_API_KEY is not configured."
+    );
 
+    return res.json({
+      answer: fallbackGuidance(language),
+      ephemeral: true,
+      provider: "local-fallback",
+    });
+  }
 
-    try {
-
-      const userPrompt = `
+  try {
+    const userPrompt = `
 Respond in ${languageName}.
 
 ${surveyContext}
 
 Parent's latest question:
 
-${safeMessage.trim()
-  ? safeMessage
-  : "Please provide initial personalized guidance based on the behavior observations."}
+${
+  safeMessage.trim()
+    ? safeMessage
+    : "Please provide initial personalized guidance based on the behavior observations."
+}
 `;
 
+    /*
+     * OpenAI Responses API
+     *
+     * store: false means this response is not stored
+     * as an OpenAI response object for later retrieval.
+     */
 
-      const response =
-        await client.responses.create({
-          model:
-            process.env.OPENAI_MODEL ||
-            "gpt-5.6-luna",
+    const response = await client.responses.create({
+      model:
+        process.env.OPENAI_MODEL ||
+        "gpt-5.6-luna",
 
-          /*
-            Keep storage disabled.
-          */
-          store:
-            process.env.OPENAI_STORE ===
-            "true",
+      store: false,
 
-          input: [
-            {
-              role: "system",
-              content: SYSTEM_PROMPT
-            },
-            {
-              role: "user",
-              content: userPrompt
-            }
-          ]
-        });
+      input: [
+        {
+          role: "system",
+          content: SYSTEM_PROMPT,
+        },
+        {
+          role: "user",
+          content: userPrompt,
+        },
+      ],
+    });
 
+    const answer =
+      response.output_text?.trim() ||
+      fallbackGuidance(language);
 
-      /*
-        Do NOT save:
-        - response IDs
-        - survey answers
-        - chat messages
-        - parent information
+    return res.json({
+      answer,
+      ephemeral: true,
+    });
+  } catch (error) {
+    /*
+     * IMPORTANT:
+     * Log the actual OpenAI error in Render logs.
+     * Never log the API key.
+     */
 
-        Everything is discarded after this request.
-      */
+    console.error("AI request failed.");
 
-      return res.json({
-        answer:
-          response.output_text ||
-          fallbackGuidance(language),
+    console.error(
+      "Status:",
+      error?.status || "unknown"
+    );
 
-        ephemeral: true
-      });
+    console.error(
+      "Message:",
+      error?.message || "Unknown error"
+    );
 
-    } catch (error) {
-
+    if (error?.error) {
       console.error(
-        "AI request failed:",
-        error?.message ||
-          "Unknown error"
+        "OpenAI error:",
+        JSON.stringify(error.error)
       );
-
-      return res.status(502).json({
-        error:
-          "The guidance service is temporarily unavailable.",
-
-        answer:
-          fallbackGuidance(language),
-
-        ephemeral: true
-      });
     }
-  }
-);
 
+    return res.status(502).json({
+      error:
+        "The guidance service is temporarily unavailable.",
+
+      answer: fallbackGuidance(language),
+
+      ephemeral: true,
+    });
+  }
+});
 
 /*
-  Simple fallback guidance.
-*/
+ * Simple fallback guidance
+ */
+
 function fallbackGuidance(language) {
-
   const guidance = {
-
     en: `
 Start with connection before correction.
 
@@ -429,24 +361,31 @@ Try one predictable routine today and use the same calm words each time.
 "तू शब्दांत सांगितल्याबद्दल धन्यवाद."
 
 आज एक ठरलेली दिनचर्या वापरून पाहा आणि प्रत्येक वेळी शांत भाषा वापरा.
-`
+`,
   };
 
-  return (
-    guidance[language] ||
-    guidance.en
-  );
+  return guidance[language] || guidance.en;
 }
 
-
 /*
-  Start server.
-*/
-app.listen(
-  port,
-  () => {
-    console.log(
-      `Margdarshan API listening on http://localhost:${port}`
-    );
-  }
-);
+ * Start server
+ */
+
+app.listen(port, () => {
+  console.log(
+    `Margdarshan API listening on port ${port}`
+  );
+
+  console.log(
+    `OpenAI configured: ${Boolean(
+      process.env.OPENAI_API_KEY
+    )}`
+  );
+
+  console.log(
+    `OpenAI model: ${
+      process.env.OPENAI_MODEL ||
+      "gpt-5.6-luna"
+    }`
+  );
+});
